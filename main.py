@@ -1,7 +1,9 @@
 import os
 import csv
 import xml.etree.ElementTree as ET
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
+from urllib.parse import urlparse, urljoin
+from urllib.error import HTTPError
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from prompt_toolkit.shortcuts import prompt
@@ -32,13 +34,37 @@ def get_sitemap_url(service, site_url):
 def get_all_pages_from_sitemap(url):
     """Parse all page URLs from sitemap."""
     try:
-        xml_data = urlopen(url).read()
-        root = ET.fromstring(xml_data)
-        namespaces = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'} # add namespace handling
-        links = [element.find('ns:loc', namespaces).text for element in root.findall('ns:url', namespaces)]
-        return links
+        # Create a request with headers to mimic a browser request
+        req = Request(
+            url,
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/xml,application/xml,application/xhtml+xml,text/html;q=0.9,text/plain;q=0.8,image/png,*/*;q=0.5',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Connection': 'keep-alive'
+            }
+        )
+        
+        # Add error handling for HTTP errors
+        try:
+            with urlopen(req, timeout=10) as response:
+                if response.status != 200:
+                    print(f"HTTP Error {response.status} for URL: {url}")
+                    return []
+                xml_data = response.read()
+                
+                # Parse the XML data
+                root = ET.fromstring(xml_data)
+                namespaces = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
+                links = [element.find('ns:loc', namespaces).text for element in root.findall('ns:url', namespaces)]
+                return links
+                
+        except HTTPError as e:
+            print(f"HTTP Error {e.code} for URL: {url}")
+            return []
+            
     except Exception as e:
-        print(f"Error parsing sitemap: {e}")
+        print(f"Error parsing sitemap: {e}, {url}")
         return []
 
 def get_all_pages_from_csv(path):
